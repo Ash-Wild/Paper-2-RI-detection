@@ -1,0 +1,58 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{050c5a7e-fec0-455b-9a7a-34a1f6a58bba}</ProjectGuid>
+    <ProjectHome />
+    <StartupFile>Griddify_points.py</StartupFile>
+    <SearchPath />
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <ProjectTypeGuids>{888888a0-9f3d-457c-b088-3a5042f75d52}</ProjectTypeGuids>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <InterpreterId>MSBuild|env|$(MSBuildProjectFullPath)</InterpreterId>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'" />
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'" />
+  <PropertyGroup>
+    <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Extract_points.py" />
+    <Compile Include="Griddify_points.py" />
+    <Compile Include="ISMN_Visualise.py" />
+    <Compile Include="L1_Reader_April2023.py" />
+    <Compile Include="NOAA_CYGNSS_L2_reader_March2023.py" />
+    <Compile Include="POBI.py" />
+    <Compile Include="Point_nearest_location.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Application.Enrollment\Cam\301601348_1531003124000010_9041584252876349735_n.jpg" />
+    <Content Include="Data\ISMN\ISMN_qualityflags_description.txt" />
+    <Content Include="Data\ISMN\Readme.txt" />
+    <Content Include="Travel docs\Ashley Wild Business Card.jpg" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Application.Enrollment\" />
+    <Folder Include="Application.Enrollment\Cam" />
+    <Folder Include="Data\" />
+    <Folder Include="Data\ISMN" />
+    <Folder Include="Travel docs" />
+  </ItemGroup>
+  <ItemGroup>
+    <InterpreterReference Include="Global|PythonCore|3.11" />
+  </ItemGroup>
+  <ItemGroup>
+    <Interpreter Include="env\">
+      <Id>env</Id>
+      <Description>env (Python 3.11 (64-bit))</Description>
+      <InterpreterPath>Scripts\python.exe</InterpreterPath>
+      <WindowsInterpreterPath>Scripts\pythonw.exe</WindowsInterpreterPath>
+      <Version>3.11</Version>
+      <Architecture>X64</Architecture>
+      <PathEnvironmentVariable>PYTHONPATH</PathEnvironmentVariable>
+    </Interpreter>
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+</Project>
