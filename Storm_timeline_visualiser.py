@@ -71,7 +71,7 @@ for cyg_file in cyg_files_list:
         cyg_file_dates.append(cyg_datetime_object.date())
 
 
-def plot_distribution(cyg_df, ref_df,merged_df):
+def plot_distribution(ref_df,noaa_df, merged_df, l2_df):
     import pandas as pd
     import numpy as np
     import matplotlib.pyplot as plt
@@ -86,7 +86,7 @@ def plot_distribution(cyg_df, ref_df,merged_df):
     plt.figure(figsize=(10, 6))
 
     # Setup: define each dataset with label and color
-    datasets = [[ref_df, 'IBTrACS', 'blue'],[cyg_df, 'NOAA', 'red'],[merged_df,'Merged','brown']]
+    datasets = [[ref_df, 'IBTrACS', 'blue'],[noaa_df, 'NOAA', 'red'],[merged_df,'Merged','orange'],[l2_df,'L2 3.2', 'green']]
 
     # Loop through each dataset
     for df, label, color in datasets:
@@ -102,8 +102,8 @@ def plot_distribution(cyg_df, ref_df,merged_df):
         # Group and compute stats
         grouped = df.groupby('time_bin')
         mean_ws = grouped['wind_speed'].mean()
-        lower_ws = grouped['wind_speed'].quantile(0.05)
-        upper_ws = grouped['wind_speed'].quantile(0.95)
+        lower_ws = grouped['wind_speed'].quantile(0.1)
+        upper_ws = grouped['wind_speed'].quantile(0.9)
         
         if label=='Merged':
             # Interpolate stats to full bin range
@@ -113,11 +113,11 @@ def plot_distribution(cyg_df, ref_df,merged_df):
 
         # Plot
         plt.plot(labels_bin, mean_ws, label=f'{label} mean', color=color)
-        plt.fill_between(labels_bin, lower_ws, upper_ws, color=color, alpha=0.2, label=f'{label} 95% range')
+        plt.fill_between(labels_bin, lower_ws, upper_ws, color=color, alpha=0.2, label=f'{label} 90% range')
 
     # Set consistent x and y limits
     plt.xlim(-12, 36)
-    plt.ylim(0, 66)
+    plt.ylim(0, 69)
 
     # Add vertical lines and annotation
     plt.axvline(0, color='grey', linestyle='--')
@@ -135,7 +135,64 @@ def plot_distribution(cyg_df, ref_df,merged_df):
     plt.savefig(directory, format='png', dpi=500, bbox_inches='tight', pad_inches=0)
     plt.show()
 
-def plot_timeline_refined(cyg_wind,cyg_time,cyg_distances,ref_times, ref_winds,name,ri_start,ri_end):
+def plot_timeline_both(cyg_wind,cyg_time,cyg_distances,merged_wind, merged_times, ref_times, ref_winds,name,ri_start,ri_end,cyg_sources=None):
+    # Start plotting
+    plt.figure(figsize=(10, 5))
+
+    # Plot NOAA-like points as separate colors per source so all three datasets
+    # are visually distinct on one figure (noaa_1.2, l2_3.2, and storm_centric).
+    cyg_time_arr = np.asarray(cyg_time)
+    cyg_wind_arr = np.asarray(cyg_wind)
+    if cyg_sources is None:
+        cyg_sources_arr = np.full(len(cyg_time_arr), 'noaa_1.2', dtype=object)
+    else:
+        cyg_sources_arr = np.asarray(cyg_sources, dtype=object)
+        if len(cyg_sources_arr) != len(cyg_time_arr):
+            cyg_sources_arr = np.full(len(cyg_time_arr), 'noaa_1.2', dtype=object)
+
+    source_style = [
+        ('l2_3.2', 'L2 3.2 YSLF', '#1a9850', 'o'),  # circle
+        ('noaa_1.2', 'NOAA 1.2', '#d73027', 's'),  # square
+    ]
+    for source_key, source_label, source_color, marker_style in source_style:
+        mask = (cyg_sources_arr == source_key)
+        if np.any(mask):
+            plt.scatter(cyg_time_arr[mask], cyg_wind_arr[mask], label=source_label,
+                       color=source_color, alpha=0.7, marker=marker_style)
+
+    # Plot storm-centric (merged) as the third dataset color.
+    plt.scatter(merged_times, merged_wind, label='Merged', color='#4575b4', alpha=0.7)
+    plt.plot(ref_times, ref_winds, label='IBTrACS', color='blue')
+    plt.xticks(rotation=45)
+    plt.xlabel('Time')
+    plt.ylabel('Wind speed (m/s)')
+    plt.legend()
+    # Add grey dashed vertical lines
+    plt.axvline(ri_start, color='grey', linestyle='--')
+    plt.axvline(ri_end, color='grey', linestyle='--')
+    
+    # Set consistent x and y limits
+    plt.ylim(0, 70)
+
+    # Add label in between
+    midpoint = ri_start + (ri_end - ri_start) / 2
+    plt.text(midpoint, plt.ylim()[1]*0.95, 'RI period', color='grey',
+             ha='center', va='top', fontsize=10, fontstyle='italic')
+    # from sklearn.metrics import mean_squared_error
+    # rmse = np.sqrt(mean_squared_error(cyg_winds, ref_winds))
+    # plt.title(f"{name} – CYGNSS vs IBTrACS Wind - RMSE: {rmse:.2f} m/s")
+
+    # cbar.ax.invert_yaxis()  # Flip the colorbar
+
+    # Save the figure
+    directory = r'C:\Users\{0}\OneDrive - RMIT University\PHD\Plots\Timeseries\both_{1}.png'.format(
+        comp, name)
+    plt.savefig(directory, format='png', dpi=300, bbox_inches='tight', pad_inches=0)
+    plt.show(block=False)
+    plt.pause(1)  # Brief pause to display
+    plt.close()  # Properly close the figure to prevent hanging
+                    
+def plot_timeline_noaa(cyg_wind,cyg_time,cyg_distances,ref_times, ref_winds,name,ri_start,ri_end):
     # arrays needed for final results
     cyg_times = cyg_time
     cyg_winds = cyg_wind
@@ -156,9 +213,13 @@ def plot_timeline_refined(cyg_wind,cyg_time,cyg_distances,ref_times, ref_winds,n
     # Add grey dashed vertical lines
     plt.axvline(ri_start, color='grey', linestyle='--')
     plt.axvline(ri_end, color='grey', linestyle='--')
+    
+    # Set consistent x and y limits
+    plt.ylim(0, 70)
+
     # Add label in between
     midpoint = ri_start + (ri_end - ri_start) / 2
-    plt.text(midpoint, plt.ylim()[1]*0.15, 'RI period', color='grey',
+    plt.text(midpoint, plt.ylim()[1]*0.95, 'RI period', color='grey',
              ha='center', va='top', fontsize=10, fontstyle='italic')
     # Add colorbar
     cbar = plt.colorbar(sc, orientation='vertical')  # Associate the colorbar with the scatter plot
@@ -175,6 +236,187 @@ def plot_timeline_refined(cyg_wind,cyg_time,cyg_distances,ref_times, ref_winds,n
         comp, cyg_version, name)
     plt.savefig(directory, format='png', dpi=300, bbox_inches='tight', pad_inches=0)
     plt.show()
+
+
+
+def plot_tc_animation(tc_lat_interpolated, tc_lon_interpolated, tc_time_interpolated, tc_vmax_interpolated,
+                      cyg_lats, cyg_lons, cyg_times, cyg_winds, cyg_sources,
+                      cyg_lats_all, cyg_lons_all, cyg_times_all, cyg_sources_all,
+                      merged_vmax_lat=None, merged_vmax_lon=None,
+                      merged_datetimes=None, merged_vmax_winds=None,
+                      tc_storm_id='', tc_durations=0, tc_intensities=0, tc_event=0,
+                      ri_start_time=None, ri_end_time=None, mid_time=None,
+                      comp='ashle', MAX_DISTANCE=80):
+    """
+    Create 4 animations showing TC track with CYGNSS measurements:
+    - NOAA 1.2 only
+    - L2 3.2 YSLF only
+    - Merged measurements only
+    - Combined (all three products together)
+
+    Parameters
+    ----------
+    tc_lat_interpolated, tc_lon_interpolated, tc_time_interpolated, tc_vmax_interpolated : arrays
+        Interpolated track data
+    cyg_lats, cyg_lons, cyg_times, cyg_winds, cyg_sources : arrays
+        CYGNSS measurements within RI window
+    cyg_lats_all, cyg_lons_all, cyg_times_all, cyg_sources_all : arrays
+        All CYGNSS measurements before filtering
+    merged_vmax_lat, merged_vmax_lon : arrays, optional
+        Latitude/longitude of maximum wind for merged measurements
+    merged_datetimes, merged_vmax_winds : arrays, optional
+        Datetime and wind speed for merged measurements
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.animation as animation
+    import warnings
+    from matplotlib.patches import Circle
+    warnings.filterwarnings('ignore', category=RuntimeWarning)
+
+    dlat = np.diff(tc_lat_interpolated, prepend=tc_lat_interpolated[0])
+    dlon = np.diff(tc_lon_interpolated, prepend=tc_lon_interpolated[0])
+
+    # Filter out zero vectors to avoid divide by zero in quiver
+    magnitude = np.sqrt(dlon**2 + dlat**2)
+    zero_mask = magnitude < 1e-6
+    dlon_safe = np.where(zero_mask, 0.01, dlon)
+    dlat_safe = np.where(zero_mask, 0.01, dlat)
+
+    buffer = 1.1
+    latitudes = tc_lat_interpolated
+    longitudes = tc_lon_interpolated
+    times = tc_time_interpolated
+    winds = tc_vmax_interpolated
+
+    max_distance_deg = MAX_DISTANCE / 111.0
+    inner_ring_deg = max(max_distance_deg * (0.03 / 0.99), 1e-4)
+
+    # Create colorbar setup
+    norm = plt.Normalize(vmin=15, vmax=45)
+    cmap = plt.cm.coolwarm
+
+    # Animation source configurations: (name, show_noaa, show_yslf, show_merged)
+    animation_configs = [
+        ('NOAA', True, False, False),
+        ('YSLF', False, True, False),
+        ('Merged', False, False, True),
+        ('Combined', True, True, True),
+    ]
+
+    # Create animations for each configuration
+    for anim_name, show_noaa, show_yslf, show_merged in animation_configs:
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        # Set plot limits
+        ax.set_xlim(min(longitudes) - buffer, max(longitudes) + buffer)
+        ax.set_ylim(min(latitudes) - buffer, max(latitudes) + buffer)
+
+        # Create colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=ax, orientation='vertical', label='Wind Speed (m/s)')
+
+        def update_frame(frame,
+                        show_noaa_data=show_noaa,
+                        show_yslf_data=show_yslf,
+                        show_merged_data=show_merged):
+            ax.clear()
+
+            # Reset plot limits
+            ax.set_xlim(min(longitudes) - buffer, max(longitudes) + buffer)
+            ax.set_ylim(min(latitudes) - buffer, max(latitudes) + buffer)
+
+            # Plot arrows for track movement
+            quiver = ax.quiver(longitudes[:frame + 1], latitudes[:frame + 1],
+                                dlon_safe[:frame + 1], dlat_safe[:frame + 1],
+                                winds[:frame + 1],
+                                cmap='coolwarm', width=0.005, norm=norm, angles='xy', scale_units='xy')
+
+            # Track if we've added any measurements for legend
+            has_measurements = False
+
+            # Plot NOAA 1.2 measurements as squares
+            if show_noaa_data:
+                mask_noaa = (cyg_times <= times[frame]) & (cyg_times >= times[frame] - np.timedelta64(8,'h')) & (cyg_sources == 'noaa_1.2')
+                if np.any(mask_noaa):
+                    ax.scatter(cyg_lons[mask_noaa], cyg_lats[mask_noaa],
+                                c=cyg_winds[mask_noaa], cmap=cmap, norm=norm,
+                                edgecolor='black', s=60, marker='s', label='NOAA 1.2')
+                    has_measurements = True
+
+            # Plot L2 3.2 YSLF measurements as circles
+            if show_yslf_data:
+                mask_yslf = (cyg_times <= times[frame]) & (cyg_times >= times[frame] - np.timedelta64(8,'h')) & (cyg_sources == 'l2_3.2')
+                if np.any(mask_yslf):
+                    ax.scatter(cyg_lons[mask_yslf], cyg_lats[mask_yslf],
+                                c=cyg_winds[mask_yslf], cmap=cmap, norm=norm,
+                                edgecolor='black', s=40, marker='o', label='YSLF (L2 3.2)')
+                    has_measurements = True
+
+            # Plot merged measurements (as diamonds)
+            if show_merged_data and merged_vmax_lat is not None and merged_vmax_lon is not None and merged_datetimes is not None and merged_vmax_winds is not None:
+                mask_merged = (merged_datetimes <= times[frame]) & (merged_datetimes >= times[frame] - np.timedelta64(8,'h'))
+                if np.any(mask_merged):
+                    if len(merged_vmax_lon) == len(merged_datetimes):
+                    # Plot merged measurements at their vmax lat/lon locations with wind speed coloring
+                        ax.scatter(merged_vmax_lon[mask_merged], merged_vmax_lat[mask_merged],
+                                c=merged_vmax_winds[mask_merged], cmap=cmap, norm=norm,
+                                edgecolor='black', s=70, marker='d', label='Merged')
+                    else:
+                        # lat and lon are a grid and want to show the epoch of winds at the time in mask
+                        ax.scatter(merged_vmax_lon, merged_vmax_lat,
+                                c=merged_vmax_winds[mask_merged], cmap=cmap, norm=norm,
+                                edgecolor='black', s=20, marker='s', label='Merged')
+                    has_measurements = True
+
+            ax.legend(loc='upper left', fontsize=8)
+
+            # Update phase label
+            if times[frame] < ri_start_time:
+                phase = 'Before RI'
+            elif times[frame] < mid_time:
+                phase = 'Early RI'
+            elif times[frame] <= ri_end_time:
+                phase = 'Later RI'
+            elif times[frame] > ri_end_time:
+                phase = 'After RI'
+            else:
+                phase = 'Unknown'
+
+            # Add rings
+            ring = Circle((longitudes[frame], latitudes[frame]), max_distance_deg,
+                         fill=False, color='black', linestyle='--', linewidth=1)
+            ax.add_patch(ring)
+            ring = Circle((longitudes[frame], latitudes[frame]), inner_ring_deg,
+                         fill=False, color='black', linestyle='-', linewidth=0.5)
+            ax.add_patch(ring)
+
+            ax.text(0.98, 0.95, f"Phase: {phase}, Time: {times[frame]}",
+                    transform=ax.transAxes, fontsize=12, ha='right', color='black',
+                    bbox=dict(facecolor='white', alpha=0.6))
+
+            # Titles & labels
+            ax.set_title('ID: {0}, Duration: {1}, Intensity: {2}\n{3}'.format(
+                tc_storm_id, tc_durations, tc_intensities, anim_name))
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+
+        # Create animation
+        pause_frames = 20
+        ani = animation.FuncAnimation(fig, update_frame,
+                                     frames=list(range(len(times))) + [len(times) - 1] * pause_frames,
+                                     repeat=True)
+
+        # Save GIF
+        save_dir = r'C:\Users\{0}\OneDrive - RMIT University\PHD\Plots\gifs'.format(comp)
+        import os
+        os.makedirs(save_dir, exist_ok=True)
+        ani.save(os.path.join(save_dir, f'{anim_name}_{tc_event}_{tc_storm_id}.gif'), fps=5)
+
+        # Show plot (non-blocking)
+        plt.show(block=False)
+        plt.pause(1)
+        plt.close(fig)
 
 
 def plot_timeline(cyg_files_list,start_time,end_time,times_array, winds_array,country):
@@ -199,9 +441,6 @@ def plot_timeline(cyg_files_list,start_time,end_time,times_array, winds_array,co
 
     # Generate a list of dates between the start and end timestamps
     date_list_storm = [date_start_storm + timedelta(days=i) for i in range(num_days_storm + 1)]
-
-
-
     for date in date_list_storm:
         #find and open the corresponding cygnss file
         try: 
