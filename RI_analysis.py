@@ -15,20 +15,22 @@ import os
 import pickle
 import re
 from typing import Optional, Tuple
-from Storm_timeline_visualiser import plot_timeline_noaa, plot_timeline_both, plot_distribution, plot_tc_animation # for visualising timeline
+from Storm_timeline_visualiser import plot_timeline_both, plot_distribution, plot_tc_animation # for visualising timeline
 from CMS_CDS_api import cms_downloader, era5_downloader, retrieve_vals, expand_and_redownload
 from RI_casestudy_insitu_finder import haversine_vectorized
 
 # from scipy.spatial import cKDTree
 comp = 'ashle'
+case_study_ind = 200 # None 210 428 665 200
 
 buffer = 1 # degrees buffer to search in storm_centric
 interp_interval= 20 # minutes to interpolate best-track
 noaa_time_threshold = 3 # hours - maximum time difference allowed between a CYGNSS measurement and a TC track point to be considered a match (used in both BallTree and fallback)
 MAX_DISTANCE = 80  # Maximum distance in kilometers
-load_checkpoint = False
-save_checkpoint = True
-skip_event_processing = False
+load_checkpoint = True
+save_checkpoint = False
+skip_event_processing = True
+store_all = False
 # L2 sample-flag option: True: keep all L2 measurements, including flagged values.- False: keep only measurements where yslf_sample_flags == 0.
 yslf_max_wind_uncertainty = None # 8.0 m/s
 yslf_incidence_angle_range = None # (10, 70)
@@ -36,9 +38,11 @@ yslf_min_snr = None # 1.3
 yslf_range_corr_gain_range = (35, 9000)
 snr_rx_filter = False  # Enable combined SNR/Rx gain filter to remove low-quality signal/gain combinations
 yslf_min_num_ddms_utilized = None # 2
-# Optional wind-speed percentile clip applied within each AOI subset.
-variables = ['incidence_angle', 'rx_gain', 'snr', 'range_corr_gain','sample_flags', 'num_ddms_utilized','nbrcs_mean_corrected','nbrcs_mean','wind_speed_uncertainty','wind_speed','cyg_vmax_error','cyg_dist','time_since_ri', 'ddm_sample_index', 'ddm_channel'] #,'SST','SSS','SWH','wave_dir',"mean_sea_level_pressure","era5_wind_speed","2m_temperature"]
+# variables = ['range_corr_gain','wind_speed','cyg_vmax_error','time_since_ri'] 
+variables = ['incidence_angle', 'rx_gain', 'snr', 'range_corr_gain','num_ddms_utilized','nbrcs_mean_corrected','nbrcs_mean','wind_speed_uncertainty','wind_speed','cyg_vmax_error','cyg_dist','time_since_ri'] 
+# #'sample_flags', 'ddm_sample_index', 'ddm_channel','SST','SSS','SWH','wave_dir',"mean_sea_level_pressure","era5_wind_speed","2m_temperature"]
 cyg_match_var = 'cyg_dist'  # choose variable used where cyg_dist was used downstream (e.g., 'incidence_angle')
+checkpoint_file = os.path.join('C:\\Users', comp, 'OneDrive - RMIT University', 'PHD', 'Data', 'IBTrACS', 'RI_analysis_optimised_checkpoint_all_sources_RCG35.pkl')
 noaa_cyg_folder = r'E:\Phd_data\cyg_noaa_1.2' # r'C:\Users\\'+comp+'\\Documents\CYGNSS_NOAA'  # 
 l2_3p2_cyg_folder = r'E:\Phd_data\cyg_l2_3.2'
 merged_cyg_folder = r'E:\Phd_data\cyg_storm_centric' #r'C:\Users\\'+comp+'\\Documents\cyg_storm_centric' 
@@ -166,11 +170,8 @@ if cyg_match_var not in variables and cyg_match_var not in ('cyg_dist', 'cyg_vma
 
 results_dt = pd.DataFrame(columns=['under/over','intensityBT','durationBT','storm_idBT','tc_eventBT','wind_change','time_diff','num_tracks'])
 noaa_df_list = []; tc_list= []; merged_list =[]; l2_df_list=[]
-noaa_ri_change = [] ;merged_ri_change = [] ; noaa_wind_change=[] ; merged_wind_change=[] ;noaa_ri_durations=[] ;merged_ri_durations=[] ; ri_change_failed = [] ; cyg_wind_change_failed=[] ; noaa_ri_initial = [] ; merged_ri_initial = []
+noaa_ri_change = [] ;merged_ri_change = [] ; noaa_wind_change=[] ; merged_wind_change=[] ;noaa_ri_durations=[] ;merged_ri_durations=[] ; noaa_ri_initial = [] ; merged_ri_initial = []
 l2_3p2_ri_change = [] ; l2_3p2_wind_change = [] ; l2_3p2_ri_durations = [] ; l2_3p2_ri_initial = []
-
-checkpoint_file = os.path.join('C:\\Users', comp, 'OneDrive - RMIT University', 'PHD', 'Data', 'IBTrACS', 'RI_analysis_optimised_checkpoint_all_sources.pkl')
-diagnostics_file = os.path.join('C:\\Users', comp, 'OneDrive - RMIT University', 'PHD', 'Data', 'IBTrACS', 'RI_event_plot_diagnostics.csv')
 
 
 if load_checkpoint and os.path.exists(checkpoint_file):
@@ -187,8 +188,6 @@ if load_checkpoint and os.path.exists(checkpoint_file):
     merged_wind_change = checkpoint.get('merged_wind_change', merged_wind_change)
     noaa_ri_durations = checkpoint.get('noaa_ri_durations', noaa_ri_durations)
     merged_ri_durations = checkpoint.get('merged_ri_durations', merged_ri_durations)
-    ri_change_failed = checkpoint.get('ri_change_failed', ri_change_failed)
-    cyg_wind_change_failed = checkpoint.get('cyg_wind_change_failed', cyg_wind_change_failed)
     noaa_ri_initial = checkpoint.get('noaa_ri_initial', noaa_ri_initial)
     merged_ri_initial = checkpoint.get('merged_ri_initial', merged_ri_initial)
     l2_3p2_ri_change = checkpoint.get('l2_3p2_ri_change', l2_3p2_ri_change)
@@ -200,6 +199,9 @@ if load_checkpoint and os.path.exists(checkpoint_file):
 
 for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 Bua 200 Kya 210 Hele 665
     if ri_rd[tc_event]==1 and durations[tc_event] < 25: # and tc_event == 428:# if time[tc_event][0] >np.datetime64('2022-12-31T23:59:59'): '2024279N21265'
+        if case_study_ind is not None and tc_event != case_study_ind:
+            continue
+        
         # need to know the length of storm and remove nans
         nans = ~np.isnan(latitude[tc_event]).data
         tc_time = time[tc_event,nans]
@@ -253,17 +255,7 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
         cyg_AOI_time_start = cyg_AOI_time_start.astype('datetime64[s]').astype('O')
         cyg_AOI_time_end = cyg_AOI_time_end.astype('datetime64[s]').astype('O')
         date_list = np.arange(cyg_AOI_time_start, cyg_AOI_time_end+np.timedelta64(1, 'D'), np.timedelta64(1, 'D'), dtype='datetime64[D]')
-        source_event_diag = {
-            source_name: {
-                'dates_requested': int(len(date_list)),
-                'dates_with_file': 0,
-                'aoi_points': 0,
-                'post_quality_points': 0,
-                'spacetime_matches': 0,
-                'ri_window_points': 0,
-            }
-            for source_name in noaa_like_files_map
-        }
+        
         noaa_res = (False, 0, 0)
         l2_res = (False, 0, 0)
         noaa_track_count = 0
@@ -282,7 +274,6 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
         cyg_match = []
         cyg_vmax_error = []
         cyg_sources = np.array([], dtype=object)
-        store_all = True
         if store_all:
             cyg_lats_all = []
             cyg_lons_all = []
@@ -293,7 +284,6 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
         for source_name, source_files in noaa_like_files_map.items():
             source_date_to_idx = date_to_noaa_idx.get(source_name, {})
             source_cache = noaa_cache.get(source_name, {})
-            event_diag = source_event_diag[source_name]
 
             for date in date_list:
                 # Fast lookup to file path
@@ -301,7 +291,6 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                     cyg_file_path = str(source_files[source_date_to_idx[date]])
                 except KeyError:
                     continue  # No file for this date, skip to next date
-                event_diag['dates_with_file'] += 1
 
                 # Load from cache if available; else open file once and cache necessary arrays
                 if cyg_file_path in source_cache:
@@ -433,7 +422,6 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                 lons_boolean = (cygnss_lons.data > AOI_lon_min) & (cygnss_lons.data < AOI_lon_max)
                 box_indices = np.where(lats_boolean & lons_boolean)[0]
                 if len(box_indices)>0:
-                    event_diag['aoi_points'] += int(len(box_indices))
                     meas_lats = cygnss_lats[box_indices]  # Measurement latitudes
                     meas_lons = cygnss_lons[box_indices]  # Measurement longitudes
                     meas_winds = cygnss_wind[box_indices]
@@ -487,7 +475,6 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                         meas_lons = meas_lons[quality_mask]
                         meas_winds = meas_winds[quality_mask]
                         meas_times = meas_times[quality_mask]
-                    event_diag['post_quality_points'] += int(len(box_indices))
                                             
                     # Convert to NumPy arrays if not already
                     meas_coords = np.column_stack((meas_lats, meas_lons))  # Shape (N, 2)
@@ -496,9 +483,10 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                     # Use BallTree (haversine) to find nearby track points per measurement (memory-efficient)
                     # filtered_distances = np.array([])
                     # nearest_indices = np.array([], dtype=int)
+                    use_fallback_distance_matrix = False
                     try:
                         from sklearn.neighbors import BallTree
-                        raise ValueError("Force fallback to avoid sklearn dependency for now")  # Remove this line when BallTree is available
+                        # raise ValueError("Force fallback to avoid sklearn dependency for now")  # Remove this line when BallTree is available
                         meas_rad = np.radians(meas_coords)
                         track_rad = np.radians(tc_coords)
                         tree = BallTree(track_rad, metric='haversine')
@@ -534,9 +522,12 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                             nearest_indices = np.array(nearest_indices_list, dtype=int)
                         else:
                             selected_indices = np.array([], dtype=int)
+                            filtered_distances = np.array([])
+                            nearest_indices = np.array([], dtype=int)
 
                     except Exception:
                         # Fallback: original full pairwise calculation (slower)
+                        use_fallback_distance_matrix = True
                         distances = haversine_vectorized(meas_coords, tc_coords)
                         time_diffs = np.abs(meas_times[:, None] - tc_time_interpolated[None, :])
                         valid_mask = np.any((distances <= MAX_DISTANCE) & (time_diffs <= np.timedelta64(noaa_time_threshold, 'h')), axis=1)
@@ -544,13 +535,13 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
 
                     # Select valid measurements
                     if len(selected_indices) > 0:
-                        event_diag['spacetime_matches'] += int(len(selected_indices))
                         cyg_lat_AOI = meas_lats[selected_indices] ; cyg_lon_AOI = meas_lons[selected_indices] ; cyg_times_AOI = meas_times[selected_indices]
                         cyg_winds_AOI = meas_winds[selected_indices] ; cyg_tracks_AOI = cygnss_tracks[box_indices][selected_indices] 
                         cyg_winds_vals = np.ma.filled(cyg_winds_AOI, np.nan).astype(float)
-                        filtered_distances = np.min(distances, axis=1)[selected_indices]
-                        nearest_indices = np.argmin(distances, axis=1)[selected_indices]
-                        cyg_vmax_error_vals = np.asarray(tc_vmax_interpolated[nearest_indices], dtype=float) - cyg_winds_vals
+                        if use_fallback_distance_matrix:
+                            filtered_distances = np.min(distances, axis=1)[selected_indices]
+                            nearest_indices = np.argmin(distances, axis=1)[selected_indices]
+                        cyg_vmax_error_vals = cyg_winds_vals - np.asarray(tc_vmax_interpolated[nearest_indices], dtype=float)
                         
 
                         cyg_lats.extend(np.asarray(cyg_lat_AOI).tolist())
@@ -626,27 +617,26 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                 cyg_times_all = np.array(cyg_times_all, dtype='datetime64[s]')
                 cyg_sources_all = np.asarray(cyg_sources_all, dtype=object)
             # Decode all flags
-            decoded_flags_list = []
-            for flag in coincident_meas['sample_flags']:
-                decoded = []
-                if flag & 1: decoded.append("poor_overall_quality")
-                if flag & 2: decoded.append("asc_node")
-                if flag & 4: decoded.append("block_IIF")
-                if flag & 8: decoded.append("block_IIR")
-                if flag & 16: decoded.append("block_IIRM")
-                if flag & 32: decoded.append("non_zero_nst")
-                if flag & 64: decoded.append("poor_quality_wind_nst")
-                if flag & 128: decoded.append("poor_quality_wind_sample")
-                decoded_flags_list.append(decoded)
-            # Keep as a plain list so pandas treats it as a 1D object column.
-            coincident_meas['sample_flags'] = decoded_flags_list
+            if 'sample_flags' in variables:
+                decoded_flags_list = []
+                for flag in coincident_meas['sample_flags']:
+                    decoded = []
+                    if flag & 1: decoded.append("poor_overall_quality")
+                    if flag & 2: decoded.append("asc_node")
+                    if flag & 4: decoded.append("block_IIF")
+                    if flag & 8: decoded.append("block_IIR")
+                    if flag & 16: decoded.append("block_IIRM")
+                    if flag & 32: decoded.append("non_zero_nst")
+                    if flag & 64: decoded.append("poor_quality_wind_nst")
+                    if flag & 128: decoded.append("poor_quality_wind_sample")
+                    decoded_flags_list.append(decoded)
+                # Keep as a plain list so pandas treats it as a 1D object column.
+                coincident_meas['sample_flags'] = decoded_flags_list
 
             tc_list.append(pd.DataFrame({'time_since_ri': time_since_ri,'wind_speed' :tc_vmax_interpolated}))
             # calculating vmax based on max velocity of each track - assuming not parralel to path
             ri_mask=((cyg_times>ri_start_time-np.timedelta64(noaa_time_threshold,'h')) & (cyg_times<ri_end_time+np.timedelta64(noaa_time_threshold,'h')))
             ri_lats=cyg_lats[ri_mask]; ri_lons=cyg_lons[ri_mask]; ri_winds=cyg_winds[ri_mask]; ri_times=cyg_times[ri_mask] ; ri_tracks=cyg_tracks[ri_mask]; ri_sources=cyg_sources[ri_mask]
-            source_event_diag['noaa_1.2']['ri_window_points'] = int(np.sum(ri_sources == 'noaa_1.2'))
-            source_event_diag['l2_3.2']['ri_window_points'] = int(np.sum(ri_sources == 'l2_3.2'))
             mid_time = ri_start_time + (ri_end_time - ri_start_time) // 2  # middle of the interpolated TC times
             # plot_timeline_noaa(ri_winds, ri_times, ri_dist,tc_time_interpolated, tc_vmax_interpolated, tc_storm_id, ri_start_time, ri_end_time)
             # Convert accumulated lists to numpy arrays for consistent dtypes before creating DataFrame
@@ -659,7 +649,7 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
             
             # add ERA5 and CMS to coincident_meas before creating DataFrame
             # check if file already exists
-            cms_check = False
+            cms_check = True
             if cms_check:
                 filepath_swh = f"E:\\Phd_data\\copernicus\\{tc_storm_id}_SWH.nc"
                 filepath_sss_sst = f"E:\\Phd_data\\copernicus\\{tc_storm_id}_SSS&SST.nc"
@@ -704,7 +694,7 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                 if not os.path.exists(filepath_era5):
                     # print(f"ERA5 file for {tc_storm_id}  already exists. Skipping download.")
                     era5_downloader(AOI_lon_min,AOI_lon_max,AOI_lat_min,AOI_lat_max,cyg_AOI_time_start,cyg_AOI_time_end,tc_storm_id)
-                era5_vars = ['msl', 'u10','v10','t2m','sp']
+                era5_vars = ['u10','v10','t2m','sp'] # 'msl',
                 try:
                     era5_res = retrieve_vals(cyg_lats, cyg_lons, cyg_times, tc_storm_id, filepath_era5, era5_vars)
                 except ValueError as e:
@@ -716,7 +706,7 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                         era5_res = retrieve_vals(cyg_lats, cyg_lons, cyg_times, tc_storm_id, filepath_era5, era5_vars)
 
                 era5_res['era5_ws'] = np.hypot(era5_res['u10'], era5_res['v10'])
-                era5_res['era5_dir'] = (np.arctan2(-era5_res['u10'], -era5_res['v10']) * 180 / np.pi) % 360
+                # era5_res['era5_dir'] = (np.arctan2(-era5_res['u10'], -era5_res['v10']) * 180 / np.pi) % 360
                 # era5_res shape: (n_measurements, n_vars) -> iterate over columns
                 for k, v in era5_res.items():
                     if k not in coincident_meas:
@@ -780,10 +770,6 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                 l2_track_count = int(np.sum(l2_track_mask))
                 vmax_time_noaa = vmax_time[noaa_track_mask] ; vmax_time_l2 = vmax_time[l2_track_mask]
                 max_wind_noaa = max_wind[noaa_track_mask] ; max_wind_l2 = max_wind[l2_track_mask]
-                # cap l2 winds at 65 m/s to avoid outliers dominating the analysis (and because L2 v3.2 YSLF is not reliable above that)
-                if len(max_wind_l2) > 0:
-                    max_wind_l2 = np.minimum(max_wind_l2, 65.0)
-
 
                 # save track-level results into dataframe
                 noaa_peak_rows = peak_global_indices[noaa_track_mask]
@@ -837,9 +823,6 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                     noaa_ri_initial.append(ri_vmax_start)
                     noaa_wind_change.append(noaa_res[1])
                     noaa_ri_durations.append(tc_durations)
-                # else:
-                #         ri_change_failed.append(ri_vmax_change)
-                #         cyg_wind_change_failed.append(noaa_res[1])
                 
                     # print(tc_intensities,tc_durations,wind_change,time_diff, cyg_AOI_time_start, cyg_AOI_time_end, cyg_lats[0],cyg_lons[0],ri_rd[tc_event])
 
@@ -863,37 +846,26 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                 if merged_cyg_files_list[cyg_files_num[valid_files[i]]] != merged_cyg_files_list[cyg_files_num[valid_files[i+1]]]:
                     unique_storm_files.append(merged_cyg_files_list[cyg_files_num[valid_files[i]]])
         unique_storm_files = list(dict.fromkeys(unique_storm_files)) # remove duplicates while preserving order   
-        merged_event_diag = {
-            'candidate_files': int(len(unique_storm_files)),
-            'files_evaluated': 0,
-            'aoi_overlap_files': 0,
-            'epochs_in_aoi': 0,
-            'valid_window_epochs': 0,
-            'valid_ri': False,
-            'selected_file': '',
-            'change_vmax': np.nan,
-        }
         found_already = False
+        merged_valid_RI = False
     
         for cyg_file_path in unique_storm_files:
-            merged_event_diag['files_evaluated'] += 1
             with nc.Dataset(cyg_file_path) as cyg_nc:
                 cyg_storm_lat = cyg_nc.variables['best_track_storm_center_lat'][:] ; cyg_storm_lon = ((cyg_nc.variables['best_track_storm_center_lon'][:] + 180) % 360) - 180
                 # as long as at least 1 measurement falls within the AOI box during the RI period, we will consider it for comparison - to ensure we are not missing out on any potential matches due to the strict box selection
                 if not (np.any((cyg_storm_lon > AOI_lon_min)&(cyg_storm_lon < AOI_lon_max) & (cyg_storm_lat > AOI_lat_min) & (cyg_storm_lat < AOI_lat_max)&(not found_already))):
                     continue
                 found_already = True
-                merged_event_diag['aoi_overlap_files'] += 1
                 # print(cyg_file_path)
                 epochs=np.where((cyg_storm_lon > AOI_lon_min)&(cyg_storm_lon < AOI_lon_max) & (cyg_storm_lat > AOI_lat_min) & (cyg_storm_lat < AOI_lat_max))[0]
                 if len(epochs)>1: # to ensure we have two or more measurements over RI period
-                    merged_event_diag['epochs_in_aoi'] += int(len(epochs))
                     vmax_lat = np.asarray(cyg_nc.variables['cygnss_vmax_lat'][epochs], dtype=float)
                     vmax_lon = np.asarray(((cyg_nc.variables['cygnss_vmax_lon'][epochs] + 180) % 360) - 180, dtype=float)
                     
-                    longitudes  = cyg_nc.variables['lon'][:] ; cygnss_lats = np.asarray(cyg_nc.variables['lat'][:], dtype=float); cygnss_wind= cyg_nc.variables['wind_speed'][epochs] ;
+                    longitudes  = cyg_nc.variables['lon'][:] ; cygnss_lats = np.asarray(cyg_nc.variables['lat'][:], dtype=float) ;
                     cygnss_lons = np.asarray(((longitudes + 180) % 360) - 180, dtype=float)
-                    cygnss_time =cyg_nc.variables['time'][epochs] ; cygnss_time_offset = cyg_nc.variables['time_offset'][epochs]
+                    cygnss_time =cyg_nc.variables['time'][epochs] 
+                    # cygnss_time_offset = cyg_nc.variables['time_offset'][epochs]
                     cygnss_time_units =cyg_nc.variables['time'].units[12:]
                     cyg_datetimes = np.datetime64(cygnss_time_units) + cygnss_time.astype('timedelta64[h]')
                     cyg_vmax = np.full(len(epochs), np.nan, dtype=float)
@@ -910,7 +882,8 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                         lon_idx = int(np.nanargmin(np.abs(cygnss_lons - vmax_lon[j])))
                         if np.abs(cygnss_lats[lat_idx] - vmax_lat[j]) > lat_tol or np.abs(cygnss_lons[lon_idx] - vmax_lon[j]) > lon_tol:
                             continue
-                        wind_val = cygnss_wind[j, lat_idx, lon_idx]
+                        wind_val_epochs = cyg_nc.variables['wind_speed'][epochs, lat_idx, lon_idx]
+                        wind_val = wind_val_epochs[j] 
                         cyg_vmax[j] = np.nan if np.ma.is_masked(wind_val) else float(wind_val)
 
                     # Find the epoch that corresponds to the RI start time (or the closest one within a reasonable window if an exact match is not found)
@@ -931,7 +904,6 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                     valid_indices = np.where(valid_mask)[0]
                     if len(valid_indices) == 0:
                         continue
-                    merged_event_diag['valid_window_epochs'] += int(len(valid_indices))
                     end_epoch = valid_indices[np.argmax(cyg_vmax[valid_indices])]
                     change_vmax = float(cyg_vmax[end_epoch] - cyg_vmax[start_epoch])
 
@@ -942,9 +914,8 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                     merged_ri_initial.append(float(ri_vmax_start))
                     merged_wind_change.append(change_vmax)
                     merged_ri_durations.append(float(tc_durations))
-                    merged_event_diag['valid_ri'] = True
-                    merged_event_diag['selected_file'] = os.path.basename(cyg_file_path)
-                    merged_event_diag['change_vmax'] = float(change_vmax)
+                    merged_valid_RI = True
+
                     merged_list.append(pd.DataFrame({'time_since_ri': cyg_datetimes-ri_start_time,'wind_speed' :cyg_vmax}))
                     # tc_list.append(pd.DataFrame({'time_since_ri': time_since_ri,'wind_speed' :tc_vmax_interpolated}))
 
@@ -953,14 +924,11 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                     merged_vmax_lon = vmax_lon # cygnss_lons
                     merged_datetimes = cyg_datetimes
                     merged_vmax_winds = cyg_vmax # cygnss_wind 
-                 
-        # Time series plot
-        timeseries = False
-        if timeseries:
+
+        if case_study_ind is not None:   
+            # Time series plot
             plot_timeline_both(ri_winds, ri_times, cyg_match, merged_vmax_winds, merged_datetimes, tc_time_interpolated, tc_vmax_interpolated, tc_storm_id+'_'+str(tc_event), ri_start_time, ri_end_time, cyg_sources=ri_sources)
         # Call animation function after all data processing
-        animation = False
-        if animation:
             # Creates 4 GIFs: NOAA, YSLF, Merged, and Combined
             plot_tc_animation(
                 tc_lat_interpolated, tc_lon_interpolated, tc_time_interpolated, tc_vmax_interpolated,
@@ -972,16 +940,15 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                 tc_event=tc_event, ri_start_time=ri_start_time, ri_end_time=ri_end_time,
                 mid_time=mid_time, comp=comp, MAX_DISTANCE=MAX_DISTANCE
             )
-            
-            meas_df = pd.DataFrame(noaa_df_list[0])
             output_dir = os.path.join('C:\\Users', comp, 'OneDrive - RMIT University', 'PHD', 'Plots', 'case_studies')
             os.makedirs(output_dir, exist_ok=True)
-            meas_csv = os.path.join(output_dir, f'{tc_event}_NOAA_measurements.csv')
-            meas_df.to_csv(meas_csv, index=False)
-            merged_df = pd.DataFrame(l2_df_list[0])
-            merged_csv = os.path.join(output_dir, f'{tc_event}_YSLF_measurements.csv')
-            merged_df.to_csv(merged_csv, index=False)
-            if merged_event_diag['valid_ri'] == True:
+            noaa_df = pd.DataFrame(noaa_df_list[0])
+            noaa_csv = os.path.join(output_dir, f'{tc_event}_NOAA_measurements.csv')
+            noaa_df.to_csv(noaa_csv, index=False)
+            yslf_df = pd.DataFrame(l2_df_list[0])
+            yslf_csv = os.path.join(output_dir, f'{tc_event}_YSLF_measurements.csv')
+            yslf_df.to_csv(yslf_csv, index=False)
+            if merged_valid_RI == True:
                 merged_data = {
                     
                     'latitude': merged_vmax_lat,
@@ -993,48 +960,7 @@ for tc_event in range(0 if skip_event_processing else len(storm_id)): #Hin 428 B
                 merged_csv = os.path.join(output_dir, f'{tc_event}_Merged_measurements.csv')
                 merged_df.to_csv(merged_csv, index=False)
 
-        diagnostic_row = {
-            'generated_at_utc': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'storm_id': _as_text(tc_storm_id),
-            'tc_event': int(tc_event),
-            'ri_duration_hr': float(tc_durations),
-            'ri_start': str(ri_start_time),
-            'ri_end': str(ri_end_time),
-            'noaa_time_threshold_hr': int(noaa_time_threshold),
-            'max_distance_km': float(MAX_DISTANCE),
-            'snr_rx_filter': bool(snr_rx_filter),
-            'noaa_dates_requested': int(source_event_diag['noaa_1.2']['dates_requested']),
-            'noaa_dates_with_file': int(source_event_diag['noaa_1.2']['dates_with_file']),
-            'noaa_aoi_points': int(source_event_diag['noaa_1.2']['aoi_points']),
-            'noaa_post_quality_points': int(source_event_diag['noaa_1.2']['post_quality_points']),
-            'noaa_spacetime_matches': int(source_event_diag['noaa_1.2']['spacetime_matches']),
-            'noaa_ri_window_points': int(source_event_diag['noaa_1.2']['ri_window_points']),
-            'noaa_track_peaks': int(noaa_track_count),
-            'noaa_valid_ri': bool(noaa_res[0]),
-            'noaa_change': float(noaa_res[1]) if noaa_res[0] else np.nan,
-            'noaa_time_diff_hr': float(noaa_res[2]) if noaa_res[0] else np.nan,
-            'l2_dates_requested': int(source_event_diag['l2_3.2']['dates_requested']),
-            'l2_dates_with_file': int(source_event_diag['l2_3.2']['dates_with_file']),
-            'l2_aoi_points': int(source_event_diag['l2_3.2']['aoi_points']),
-            'l2_post_quality_points': int(source_event_diag['l2_3.2']['post_quality_points']),
-            'l2_spacetime_matches': int(source_event_diag['l2_3.2']['spacetime_matches']),
-            'l2_ri_window_points': int(source_event_diag['l2_3.2']['ri_window_points']),
-            'l2_track_peaks': int(l2_track_count),
-            'l2_valid_ri': bool(l2_res[0]),
-            'l2_change': float(l2_res[1]) if l2_res[0] else np.nan,
-            'l2_time_diff_hr': float(l2_res[2]) if l2_res[0] else np.nan,
-            'merged_candidate_files': int(merged_event_diag['candidate_files']),
-            'merged_files_evaluated': int(merged_event_diag['files_evaluated']),
-            'merged_aoi_overlap_files': int(merged_event_diag['aoi_overlap_files']),
-            'merged_epochs_in_aoi': int(merged_event_diag['epochs_in_aoi']),
-            'merged_valid_window_epochs': int(merged_event_diag['valid_window_epochs']),
-            'merged_valid_ri': bool(merged_event_diag['valid_ri']),
-            'merged_change': float(merged_event_diag['change_vmax']) if merged_event_diag['valid_ri'] else np.nan,
-            'merged_selected_file': merged_event_diag['selected_file'],
-        }
-        os.makedirs(os.path.dirname(diagnostics_file), exist_ok=True)
-        pd.DataFrame([diagnostic_row]).to_csv( 
-            diagnostics_file, mode='a', header=not os.path.exists(diagnostics_file),index=False)
+        
         
 # save the results
 if (not skip_event_processing) and save_checkpoint:
@@ -1051,8 +977,6 @@ if (not skip_event_processing) and save_checkpoint:
         'merged_wind_change': merged_wind_change,
         'noaa_ri_durations': noaa_ri_durations,
         'merged_ri_durations': merged_ri_durations,
-        'ri_change_failed': ri_change_failed,
-        'cyg_wind_change_failed': cyg_wind_change_failed,
         'noaa_ri_initial': noaa_ri_initial,
         'merged_ri_initial': merged_ri_initial,
         'l2_3p2_ri_change': l2_3p2_ri_change,
@@ -1118,7 +1042,7 @@ def product_skill_scatterplot(ri_change,cyg_wind_change,ri_initial, ri_durations
     total_15 = np.sum(in_box) + np.sum(y_high) + np.sum(y_low) + np.sum(y_superlow_x_low)  ; total_23 = np.sum(y_low_x_high) + np.sum(xy_high) + np.sum(x_high) + np.sum(y_superlow_x_high)
 
     # Adding text annotations
-    text = True
+    text = False
     if text:
         plt.text(16, 16, f"{np.sum(in_box)} pts  {np.sum(in_box)/total_15*100:.1f}%", fontsize=12, color='black')      # Middle box
         plt.text(23.5, 16, f"{np.sum(x_high)} pts  {np.sum(x_high)/total_23*100:.1f}%", fontsize=12, color='black')       # Right
@@ -1141,11 +1065,12 @@ def product_skill_scatterplot(ri_change,cyg_wind_change,ri_initial, ri_durations
     plt.ylabel('CYGNSS Vmax change (m/s)')
     plt.title(shortname)
     plt.savefig(f'{filename}_{shortname}.png' , dpi=500)
-    plt.show()
+    plt.show(block=False)
+    plt.pause(1)
+    plt.close()
 
     
-scatterplot=True
-if scatterplot:
+if case_study_ind is None:
     # find the total number of events for each duration 
     unique_durations, num_events_duration  = np.unique(durations, return_counts=True)
     # swap the order of unique_durations and num_events_duration so that they are in descending order of duration
@@ -1179,48 +1104,59 @@ if scatterplot:
     # plt.savefig(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Plots\skill_iniital_2026.png' , dpi=500)
     # plt.show()
 
-plot_dist=False
-if plot_dist:
     results_dt.to_csv(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\ri_results_v5.csv')
     final_noaa_df = pd.concat(noaa_df_list, ignore_index=True)
     final_l2_df = pd.concat(l2_df_list, ignore_index=True)
     final_tc_df = pd.concat(tc_list, ignore_index=True)
     final_merged_df =pd.concat(merged_list, ignore_index=True)
-    final_noaa_df.to_csv(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\NOAA_Measurements.csv')
-    final_l2_df.to_csv(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\YSLF_Measurements.csv')
-    final_merged_df.to_csv(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\Merged_Measurements.csv')
-
+    # final_noaa_df.to_csv(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\NOAA_Measurements.csv')
+    # final_l2_df.to_csv(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\YSLF_Measurements.csv')
+    # final_merged_df.to_csv(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\Merged_Measurements.csv')
     plot_distribution(final_tc_df,final_noaa_df,final_merged_df,final_l2_df)
 
 # Make a series of scatterplots showing the relationship between the error in RI change (CYGNSS - Best Track) to each of the variables in the final_df. This will help to identify if there are any relationships between the error and the variables, and if the initial Vmax has any influence on this relationship.
-comp = 'ashle'
-charts = False
+charts = True
 if charts:
     import matplotlib.pyplot as plt
     import seaborn as sns
     import pandas as pd
     import numpy as np
-    df = pd.read_csv(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\NOAA_Measurements.csv')
-    df = df.dropna(subset=['cyg_vmax_error'])
-    for col in df.columns:
-        if col not in ['Index', 'cyg_vmax_error', 'sample_flags', 'time_since_ri','ddm_sample_index','ddm_channel','VMDR','u10','v10','sp','era5_dir']:
-            plt.figure(figsize=(8, 6))
-            sns.scatterplot(data=df, x=col, y='cyg_vmax_error')
-            plt.xlabel(col)
-            plt.ylabel('Best Track Vmax - CYGNSS change error (m/s)')
-            plt.title(f'Error vs {col}')
-            # add a quadratic trendline to the plot
-            z = np.polyfit(df[col], df['cyg_vmax_error'], 2)
-            p = np.poly1d(z)
-            x_sorted = np.sort(df[col])
-            plt.plot(x_sorted, p(x_sorted), "r--", linewidth=2)
-            # add R2 value for the goodness of fit of the trendline
-            from sklearn.metrics import r2_score
-            r2 = r2_score(df['cyg_vmax_error'], p(df[col]))
-            plt.text(0.05, 0.95, f'R2 = {r2:.2f}', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top')
-            
-            plt.savefig(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Plots\error_vs_{0}.png'.format(col), dpi=500)
-            plt.show()
+    comp = 'ashle'
+    for product in ['NOAA','YSLF']: # 
+        df = pd.read_csv(r'C:\Users\{0}\OneDrive - RMIT University\PHD\Data\IBTrACS\{1}_Measurements_RCG35.csv'.format(comp,product))
+        df = df.dropna(subset=['cyg_vmax_error'])
+        for col in df.columns:
+            if col not in ['Index', 'cyg_vmax_error', 'sample_flags', 'time_since_ri','ddm_sample_index','ddm_channel','VMDR','u10','v10','era5_dir','cyg_source']:
+                print(col)
+                plt.figure(figsize=(8, 6))
+                sns.kdeplot(
+                    data=df,
+                    x=col,
+                    y='cyg_vmax_error',
+                    fill=True,
+                    levels=30,
+                    thresh=0.02,
+                    cmap='viridis')
+                plt.xlabel(col)
+                plt.ylabel('CYGNSS - Best Track Vmax change error (m/s)')
+                plt.title(f'{product} Error vs {col}')
+                # add a quadratic trendline to the plot
+                z = np.polyfit(df[col], df['cyg_vmax_error'], 2)
+                p = np.poly1d(z)
+                x_sorted = np.sort(df[col])
+                plt.plot(x_sorted, p(x_sorted), "r--", linewidth=2)
+                # add R2 value for the goodness of fit of the trendline
+                from sklearn.metrics import r2_score
+                r2 = r2_score(df['cyg_vmax_error'], p(df[col]))
+                plt.text(0.05, 0.95, f'R2 = {r2:.2f}', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top')
+                # show best-fit line equation on the plot
+                x='x'
+                plt.text(0.05, 0.05, f'Error = {z[0]:.6e}*{x}^2 + {z[1]:.6e}*{x} + {z[2]:.6e}', transform=plt.gca().transAxes, fontsize=12, verticalalignment='top')
+                
+                plt.savefig(r'C:\Users\{0}\OneDrive - RMIT University\PHD\Plots\{1}_error_vs_{2}.png'.format(comp, product, col), dpi=500)
+                plt.show(block=False)
+                plt.pause(1)
+                plt.close()
 
 bootstrapping=False
 if bootstrapping:
@@ -1231,109 +1167,107 @@ if bootstrapping:
     import numpy as np
     # Check if df exists, if not create it by concatenating noaa_df_list and save to csv
     comp = 'ashle'
-    df_filename = r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Data\IBTrACS\NOAA_Measurements.csv'
-    try:
+    for product in ['NOAA','YSLF']:
+        df_filename = r'C:\Users\{0}\OneDrive - RMIT University\PHD\Data\IBTrACS\{1}_Measurements.csv'.format(comp, product)
         df = pd.read_csv(df_filename)
-    except FileNotFoundError:
-        final_df = pd.concat(noaa_df_list, ignore_index=True)
-        df = final_df.select_dtypes(include=['number'])  # Keep only numeric columns
-        df = df.dropna()
-        df.to_csv(df_filename, index=False)
 
-    # remove any rows where Y is empty or NaN
-    df = df.dropna(subset=['cyg_vmax_error'])
+        # remove any rows where Y is empty or NaN
+        df = df.dropna(subset=['cyg_vmax_error'])
 
-    y = df['cyg_vmax_error']
-    X = df.drop(columns=['Index', 'cyg_vmax_error', 'wind_speed_uncertainty', 'sample_flags', 'time_since_ri','ddm_sample_index','ddm_channel','VMDR','u10','v10','sp','era5_dir'], errors='ignore')
-    X = X.select_dtypes(include=['number']).copy()
-    X = X.dropna(axis=1, how='all')
+        y = df['cyg_vmax_error']
+        X = df.drop(columns=['Index', 'cyg_vmax_error', 'wind_speed_uncertainty', 'sample_flags', 'time_since_ri','ddm_sample_index','ddm_channel','VMDR','u10','v10','unnamed'], errors='ignore')
+        X = X.select_dtypes(include=['number']).copy()
+        X = X.dropna(axis=1, how='all')
 
-    feature_label_map = {
-        'incidence_angle': 'Incidence angle',
-        'wind_speed': 'CYGNSS wind speed',
-        'rx_gain': 'Receiver gain',
-        'snr': 'SNR',
-        'range_corr_gain': 'Range-corrected gain',
-        'num_ddms_utilized': '# DDMs used',
-        'nbrcs_mean_corrected': 'Avg.NBRCS corrected',
-        'nbrcs_mean': 'Avg.NBRCS original',
-        'cyg_dist': 'Distance to best-track',
-        'thetao': 'SST',
-        'so': 'Salinity',
-        'msl': 'MSLP',
-        'VHM0': 'Significant wave height',
-        'era5_ws': 'ERA5 Wind Speed',
-        't2m': '2m Air Temp.',
-        'SST': 'SST',
-        'SSS': 'Salinity',
-        'mean_sea_level_pressure': 'MSLP',
-        '2m_temperature': '2m Air Temp.',
-    }
-    X = X.rename(columns=feature_label_map)
-    feature_names = X.columns
+        feature_label_map = {
+            'incidence_angle': 'Incidence angle',
+            'wind_speed': 'CYGNSS wind speed',
+            'rx_gain': 'Receiver gain',
+            'snr': 'SNR',
+            'range_corr_gain': 'Range-corrected gain',
+            'num_ddms_utilized': '# DDMs used',
+            'nbrcs_mean_corrected': 'Avg.NBRCS corrected',
+            'nbrcs_mean': 'Avg.NBRCS',
+            'cyg_dist': 'Distance to best-track',
+            'thetao': 'SST',
+            'so': 'Salinity',
+            'msl': 'MSLP',
+            'sp': 'Surface Pressure',
+            'VHM0': 'Significant wave height',
+            'era5_ws': 'ERA5 Wind Speed',
+            't2m': '2m Air Temp.',
+            'SST': 'SST',
+            'SSS': 'Salinity',
+            'mean_sea_level_pressure': 'MSLP',
+            '2m_temperature': '2m Air Temp.',
+        }
+        X = X.rename(columns=feature_label_map)
+        feature_names = X.columns
 
-    if X.shape[1] == 0:
-        raise ValueError('No numeric predictor columns available for bootstrapping after filtering.')
-    # Parameters
-    n_bootstrap = 500
-    n_features = X.shape[1]
-    importances_bootstrap = np.zeros((n_bootstrap, n_features))
-    use_gpu = True
-    
-    # Bootstrap loop
-    for i in range(n_bootstrap):
-        sample_indices = np.random.choice(len(X), size=len(X), replace=True)
-        X_sample = X.iloc[sample_indices].to_numpy(dtype=np.float32)
-        y_sample = y.iloc[sample_indices].to_numpy(dtype=np.float32)
+        if X.shape[1] == 0:
+            raise ValueError('No numeric predictor columns available for bootstrapping after filtering.')
+        # Parameters
+        n_bootstrap = 1000
+        n_features = X.shape[1]
+        importances_bootstrap = np.zeros((n_bootstrap, n_features))
+        use_gpu = True
+        
+        # Bootstrap loop
+        for i in range(n_bootstrap):
+            sample_indices = np.random.choice(len(X), size=len(X), replace=True)
+            X_sample = X.iloc[sample_indices].to_numpy(dtype=np.float32)
+            y_sample = y.iloc[sample_indices].to_numpy(dtype=np.float32)
 
-        model = xgb.XGBRegressor(
-            n_estimators=100,
-            random_state=i,
-            tree_method='hist',
-            device='cuda' if use_gpu else 'cpu',
-            n_jobs=1,
-        )
-        try:
-            model.fit(X_sample, y_sample)
-        except xgb.core.XGBoostError:
-            if use_gpu:
-                use_gpu = False
-                model = xgb.XGBRegressor(
-                    n_estimators=100,
-                    random_state=i,
-                    tree_method='hist',
-                    device='cpu',
-                    n_jobs=1,
-                )
+            model = xgb.XGBRegressor(
+                n_estimators=100,
+                random_state=i,
+                tree_method='hist',
+                device='cuda' if use_gpu else 'cpu',
+                n_jobs=1,
+            )
+            try:
                 model.fit(X_sample, y_sample)
-            else:
-                raise
-        importances_bootstrap[i, :] = model.feature_importances_
-    
-    # Compute mean and 95% confidence interval
-    importance_mean = np.mean(importances_bootstrap, axis=0)
-    importance_lower = np.percentile(importances_bootstrap, 5, axis=0)
-    importance_upper = np.percentile(importances_bootstrap, 95, axis=0)
-    
-    # Create a DataFrame for plotting
-    importance_df = pd.DataFrame({
-        'Feature': feature_names,
-        'Mean Importance': importance_mean,
-        'Lower CI': importance_lower,
-        'Upper CI': importance_upper
-    }).sort_values(by='Mean Importance', ascending=False)
-    
-    # Plot
-    plt.figure(figsize=(10, 6))
-    sns.barplot(data=importance_df, x='Mean Importance', y='Feature', palette='viridis')
-    plt.errorbar(importance_df['Mean Importance'], importance_df['Feature'],
-                 xerr=[importance_df['Mean Importance'] - importance_df['Lower CI'],
-                       importance_df['Upper CI'] - importance_df['Mean Importance']],
-                 fmt='none', ecolor='black', capsize=3, label='95% CI')
-    plt.xlabel('Bootstrapped Feature Importance')
-    plt.tight_layout()
-    plt.savefig(r'C:\Users\\' + comp + r'\OneDrive - RMIT University\PHD\Plots\feature_importance_bootstrap_v8.png', dpi=500)
-    plt.show()
+            except xgb.core.XGBoostError:
+                if use_gpu:
+                    use_gpu = False
+                    model = xgb.XGBRegressor(
+                        n_estimators=100,
+                        random_state=i,
+                        tree_method='hist',
+                        device='cpu',
+                        n_jobs=1,
+                    )
+                    model.fit(X_sample, y_sample)
+                else:
+                    raise
+            importances_bootstrap[i, :] = model.feature_importances_
+        
+        # Compute mean and 95% confidence interval
+        importance_mean = np.mean(importances_bootstrap, axis=0)
+        importance_lower = np.percentile(importances_bootstrap, 5, axis=0)
+        importance_upper = np.percentile(importances_bootstrap, 95, axis=0)
+        
+        # Create a DataFrame for plotting
+        importance_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Mean Importance': importance_mean,
+            'Lower CI': importance_lower,
+            'Upper CI': importance_upper
+        }).sort_values(by='Mean Importance', ascending=False)
+        
+        # Plot
+        plt.figure(figsize=(10, 6))
+        sns.barplot(data=importance_df, x='Mean Importance', y='Feature', palette='viridis')
+        plt.errorbar(importance_df['Mean Importance'], importance_df['Feature'],
+                    xerr=[importance_df['Mean Importance'] - importance_df['Lower CI'],
+                        importance_df['Upper CI'] - importance_df['Mean Importance']],
+                    fmt='none', ecolor='black', capsize=3, label='95% CI')
+        plt.xlabel('Bootstrapped Feature Importance')
+        plt.tight_layout()
+        plt.savefig(r'C:\Users\{0}\OneDrive - RMIT University\PHD\Plots\{1}_feature_importance_bootstrap_v9.png'.format(comp,product), dpi=500)
+        plt.show(block=False)
+        plt.pause(1)
+        plt.close()
 
 # %%
 

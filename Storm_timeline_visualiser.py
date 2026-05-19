@@ -5,76 +5,11 @@ Input: times and values of station, and CYGNSS files
 output: map showing timeline shift
 @author: Ashley
 """
-
-import glob
-from datetime import datetime, timedelta 
-import numpy as np
-import pickle
-import netCDF4 as nc
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
-
-# from BOM_high_speed_finder import wind_thresh, time_thresh
-
-# input files from PSLGM_high_speed_finder
-comp = 'ashle'  # computer username
-cyg_version = 'noaa_1.2' # 'noaa_1.2' OR 'l2_3.2' or 'storm_centric'
-data_folder = '\Aus 1hr' # data_folder = '\BOM Stations' OR ' PSLGM' OR 'Aus 1hr'
-csv_folder  = r'C:\Users\\' + comp + '\OneDrive - RMIT University\PHD\Data\BOM stations' + data_folder
-search_distance = 0.5 # number of gedrees for searching for CYGNSS
-cyg_time_thresh = 1 # number of hours to look for CYGNSS outside of event 
-cyg_AOI = False # will switch to true if there's some overlap
-
-# Open the file and load the list
-with open(csv_folder+'\events_list.pkl', 'rb') as f:
-    events_list = pickle.load(f)
-
-location_dict = {
-    'Cook Islands': {'lat': -21.199, 'lon': -159.786},
-    'Federated States of Micronesia': {'lat': 6.978, 'lon': 158.197},
-    ' Fiji': {'lat': -17.605, 'lon': 177.438},
-    'Kiribati': {'lat': 1.362, 'lon': 172.93},
-    'Marshall Islands': {'lat': 7.108, 'lon': 171.371},
-    'Nauru': {'lat': -0.532, 'lon': 166.909},
-    'Papua New Guinea': {'lat': -2.036, 'lon': 147.375},
-    'Samoa': {'lat': -13.819, 'lon': -171.756},
-    'Solomon Islands': {'lat': -9.422, 'lon': 159.955},
-    'Tonga': {'lat': -21.14, 'lon': -175.179},
-    'Tuvalu': {'lat': -8.503, 'lon': 179.209},
-    'Vanuatu': {'lat': -17.761, 'lon': 168.293},
-    'Niue': {'lat': -19.053, 'lon': -169.921}
-}
-
-cyg_folder = r'C:\Users\\'+comp+'\OneDrive - RMIT University\PHD\Data\cyg_'+cyg_version
-cyg_files_list = glob.glob(cyg_folder+ "\*.nc")
-
-# find the dates of cyg 
-# make a list of cygnss dates and SMAP dates
-cyg_file_dates = []
-cyg_files_num = []
-file_counter = 0
-for cyg_file in cyg_files_list:
-    if cyg_version == 'storm_centric':
-        cyg_nc = nc.Dataset(cyg_file)
-        date_format = "%y-%m-%d %H:%M:%S"
-        cyg_start_time_str = cyg_nc.variables['time'].units[14:31]
-        cyg_start_date = datetime.strptime(cyg_start_time_str, date_format)
-        cyg_datetime_array = np.vectorize(lambda x: cyg_start_date + timedelta(hours=int(x)))(cyg_nc.variables['time'][:])
-        for i in cyg_datetime_array:
-            cyg_file_dates.append(i.date())
-            cyg_files_num.append(file_counter)
-        file_counter += 1
-    else: 
-        start_ind = cyg_file.find('ddmi.s')
-        cyg_datetime_object = datetime.strptime(cyg_file[start_ind+6:start_ind+14], "%Y%m%d")
-        cyg_file_dates.append(cyg_datetime_object.date())
-
-
 def plot_distribution(ref_df,noaa_df, merged_df, l2_df):
     import pandas as pd
     import numpy as np
     import matplotlib.pyplot as plt
+    comp = 'ashle'
     plt.rcParams.update({
     'font.size': 14,            # Applies to most text elements
     'axes.titlesize': 16,       # Title size
@@ -133,9 +68,15 @@ def plot_distribution(ref_df,noaa_df, merged_df, l2_df):
     plt.tight_layout()
     directory = r'C:\Users\{0}\OneDrive - RMIT University\PHD\Plots\Timeseries\Merged_NOAA_IBtracs_comparison.png'.format(comp)
     plt.savefig(directory, format='png', dpi=500, bbox_inches='tight', pad_inches=0)
-    plt.show()
+    plt.show(block=False)
+    plt.pause(1)
+    plt.close()
 
 def plot_timeline_both(cyg_wind,cyg_time,cyg_distances,merged_wind, merged_times, ref_times, ref_winds,name,ri_start,ri_end,cyg_sources=None):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    comp = 'ashle'
+
     # Start plotting
     plt.figure(figsize=(10, 5))
 
@@ -151,17 +92,17 @@ def plot_timeline_both(cyg_wind,cyg_time,cyg_distances,merged_wind, merged_times
             cyg_sources_arr = np.full(len(cyg_time_arr), 'noaa_1.2', dtype=object)
 
     source_style = [
-        ('l2_3.2', 'L2 3.2 YSLF', '#1a9850', 'o'),  # circle
-        ('noaa_1.2', 'NOAA 1.2', '#d73027', 's'),  # square
+        ('l2_3.2', 'YSLF', '#1a9850', 'o'),  # circle
+        ('noaa_1.2', 'NOAA', '#d73027', 'o'),  # square
     ]
     for source_key, source_label, source_color, marker_style in source_style:
         mask = (cyg_sources_arr == source_key)
         if np.any(mask):
             plt.scatter(cyg_time_arr[mask], cyg_wind_arr[mask], label=source_label,
-                       color=source_color, alpha=0.7, marker=marker_style)
+                       color=source_color, alpha=0.6, marker=marker_style)
 
     # Plot storm-centric (merged) as the third dataset color.
-    plt.scatter(merged_times, merged_wind, label='Merged', color='#4575b4', alpha=0.7)
+    plt.scatter(merged_times, merged_wind, label='Merged', color="#bbbe0a", alpha=1, marker='s')
     plt.plot(ref_times, ref_winds, label='IBTrACS', color='blue')
     plt.xticks(rotation=45)
     plt.xlabel('Time')
@@ -192,52 +133,6 @@ def plot_timeline_both(cyg_wind,cyg_time,cyg_distances,merged_wind, merged_times
     plt.pause(1)  # Brief pause to display
     plt.close()  # Properly close the figure to prevent hanging
                     
-def plot_timeline_noaa(cyg_wind,cyg_time,cyg_distances,ref_times, ref_winds,name,ri_start,ri_end):
-    # arrays needed for final results
-    cyg_times = cyg_time
-    cyg_winds = cyg_wind
-    dist_cyg_stat = cyg_distances
- 
-    # Normalize dist_cyg_stat to be between 0 and 1 for color mapping
-    norm = mcolors.Normalize(vmin=0, vmax=80) # vmin=min(dist_cyg_stat), vmax=max(dist_cyg_stat)
-    
-    # Start plotting
-    plt.figure(figsize=(10, 5))
-    # Use `c` instead of `alpha` for color mapping
-    sc = plt.scatter(cyg_times, cyg_winds, label='CYGNSS', c=dist_cyg_stat, norm=norm, cmap=cm.Reds_r, alpha=0.7)
-    plt.plot(ref_times, ref_winds, label='IBTrACS', color='blue')
-    plt.xticks(rotation=45)
-    plt.xlabel('Time')
-    plt.ylabel('Wind speed (m/s)')
-    plt.legend()
-    # Add grey dashed vertical lines
-    plt.axvline(ri_start, color='grey', linestyle='--')
-    plt.axvline(ri_end, color='grey', linestyle='--')
-    
-    # Set consistent x and y limits
-    plt.ylim(0, 70)
-
-    # Add label in between
-    midpoint = ri_start + (ri_end - ri_start) / 2
-    plt.text(midpoint, plt.ylim()[1]*0.95, 'RI period', color='grey',
-             ha='center', va='top', fontsize=10, fontstyle='italic')
-    # Add colorbar
-    cbar = plt.colorbar(sc, orientation='vertical')  # Associate the colorbar with the scatter plot
-    # cbar.set_label('Degrees from gauge (°)')
-    cbar.set_label('Distance from centre (km)')
-    # from sklearn.metrics import mean_squared_error
-    # rmse = np.sqrt(mean_squared_error(cyg_winds, ref_winds))
-    # plt.title(f"{name} – CYGNSS vs IBTrACS Wind - RMSE: {rmse:.2f} m/s")
-
-    # cbar.ax.invert_yaxis()  # Flip the colorbar
-
-    # Save the figure
-    directory = r'C:\Users\{0}\OneDrive - RMIT University\PHD\Plots\Timeseries\{1}_{2}.png'.format(
-        comp, cyg_version, name)
-    plt.savefig(directory, format='png', dpi=300, bbox_inches='tight', pad_inches=0)
-    plt.show()
-
-
 
 def plot_tc_animation(tc_lat_interpolated, tc_lon_interpolated, tc_time_interpolated, tc_vmax_interpolated,
                       cyg_lats, cyg_lons, cyg_times, cyg_winds, cyg_sources,
@@ -271,6 +166,7 @@ def plot_tc_animation(tc_lat_interpolated, tc_lon_interpolated, tc_time_interpol
     import matplotlib.animation as animation
     import warnings
     from matplotlib.patches import Circle
+    import numpy as np
     warnings.filterwarnings('ignore', category=RuntimeWarning)
 
     dlat = np.diff(tc_lat_interpolated, prepend=tc_lat_interpolated[0])
@@ -586,42 +482,4 @@ def plot_timeline(cyg_files_list,start_time,end_time,times_array, winds_array,co
         plt.show()
         counter += 1
         
-        
-
-
-
-
-for country,dates,wind_gust_before,wind_gust_after in events_list:
-    if data_folder == '\PSLGM':
-        gauge_lat,gauge_lon = location_dict[country]['lat'],location_dict[country]['lon']
-    elif data_folder == '\BOM Stations' or data_folder == '\Aus 1hr':
-        gauge_lat,gauge_lon = float(country[0]),float(country[1])
-        
-    AOI_lat_min,AOI_lat_max = gauge_lat-search_distance,gauge_lat+search_distance
-    AOI_lon_min,AOI_lon_max = gauge_lon-search_distance,gauge_lon+search_distance # bounding box around buoy location
     
-    # AOI_time_start_storm,AOI_time_end_storm = dates[0][0]-timedelta(hours=1), dates[-1][0]+timedelta(hours=1)
-    # AOI_time_start_before,AOI_time_end_before = wind_gust_before[-1][0]-timedelta(hours=cyg_time_thresh), wind_gust_before[0][0]
-    # AOI_time_start_after,AOI_time_end_after = wind_gust_after[0][0], wind_gust_after[-1][0]+timedelta(hours=cyg_time_thresh)
-    AOI_time_start_before = wind_gust_before[-1][0]-timedelta(hours=cyg_time_thresh)
-    AOI_time_end_after = wind_gust_after[-1][0]+timedelta(hours=cyg_time_thresh)
-    
-
-    # Convert data to numpy arrays for vectorized operations
-    timestamps_storm, wind_speeds_storm = zip(*dates)
-    times_array_storm = np.array(timestamps_storm)
-    winds_array_storm = np.array(wind_speeds_storm)    
-    
-    timestamps_before, wind_speeds_before = zip(*wind_gust_before)
-    times_array_before = np.array(timestamps_before)
-    winds_array_before = np.array(wind_speeds_before)
-    
-    timestamps_after, wind_speeds_after = zip(*wind_gust_after)
-    times_array_after = np.array(timestamps_after)
-    winds_array_after = np.array(wind_speeds_after)
-    
-    # combine the 3 segments, dates, before, and after. 
-    times_array = np.concatenate((np.flip(times_array_before),times_array_storm,times_array_after))
-    winds_array = np.concatenate((np.flip(winds_array_before),winds_array_storm,winds_array_after))
-    
-    plot_timeline(cyg_files_list, AOI_time_start_before, AOI_time_end_after,times_array,winds_array,country)
