@@ -129,6 +129,7 @@ def plot_timeline_both(cyg_wind,cyg_time,cyg_distances,merged_wind, merged_times
     directory = r'C:\Users\{0}\OneDrive - RMIT University\PHD\Plots\Timeseries\both_{1}.png'.format(
         comp, name)
     plt.savefig(directory, format='png', dpi=300, bbox_inches='tight', pad_inches=0)
+    # plt.show()
     plt.show(block=False)
     plt.pause(1)  # Brief pause to display
     plt.close()  # Properly close the figure to prevent hanging
