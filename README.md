@@ -1,6 +1,6 @@
 # Paper-2-RI-detection
 
-Repository of Python scripts used for rain-induced (RI) detection, GNSS/CYGNSS data handling, and related meteorological analyses. This collection contains data downloaders, event-finders, analysis pipelines and visualisation helpers used in research workflows.
+Repository of Python scripts used for cyclone rapid intensification (RI) detection, GNSS/CYGNSS data handling, and related meteorological analyses. This collection contains data downloaders, event-finders, analysis pipelines and visualisation helpers used in research workflows.
 
 ## Status
 Research/analysis scripts — intended for interactive use and reproducible research, not a packaged application.

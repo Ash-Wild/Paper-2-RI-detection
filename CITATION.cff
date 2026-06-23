@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite it using the metadata below.
+title: Paper-2-RI-detection
+authors:
+  - family-names: Siedlecki
+    given-names: Ashley
+    affiliation: RMIT University
+repository-code: https://github.com/Ash-Wild/Paper-2-RI-detection.git
+url: https://github.com/Ash-Wild/Paper-2-RI-detection
+abstract: >-
+  Repository of Python scripts used for rapid intensification detection, GNSS/CYGNSS
+  data handling, and related meteorological analyses.
+keywords:
+  - GNSS
+  - CYGNSS
+  - meteorology
+  - Python
+preferred-citation:
+  type: software
+  title: Paper-2-RI-detection
+  authors:
+    - family-names: Siedlecki
+      given-names: Ashley
+      affiliation: RMIT University
