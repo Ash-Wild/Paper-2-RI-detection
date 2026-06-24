@@ -89,8 +89,11 @@ if mode == 'create':
                                 storm_ids.append(storm_id_concatenated[tc])  
                                 
                                 # update storm_name to be a simple string of the name instead of an array of characters
-                                storm_name[tc] = ''.join(storm_name[tc])                                
-                                storm_names.append(storm_name[tc])
+                                storm_name_clean = ''.join(
+                                    str(char) for char in storm_name[tc]
+                                    if not isinstance(char, np.ma.core.MaskedConstant)
+                                ).strip()
+                                storm_names.append(storm_name_clean)
                                 # end_ind += 1 # to make sure we include the end measurement
                                 start_ind_before = np.abs(dt[tc]-(dt[tc,start_ind]-43200)).argmin() # np.where(dt[tc]==dt[tc,start_ind]-43200)[0][0] # maybe adjust to for loop if not work and add in as many 
                                 end_ind_after = np.abs(dt[tc]-(dt[tc,end_ind]+43200)).argmin() #np.where(dt[tc]==dt[tc,end_ind]+43200)[0][0]
